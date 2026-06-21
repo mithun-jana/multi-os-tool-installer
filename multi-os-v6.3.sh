@@ -15,7 +15,7 @@ LOG_FILE="/tmp/tool_installer.log"
 DEBUG=false
 show_banner() {
     echo -e "${GREEN}┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━┓${RESET}"
-    echo -e "${GREEN}┃   ${AQUA}Multi-OS Tool Installer${GREEN}           ┃ ${YELLOW} v6.1   ${GREEN}┃${RESET}"
+    echo -e "${GREEN}┃   ${AQUA}Multi-OS Tool Installer${GREEN}           ┃ ${YELLOW} v6.2   ${GREEN}┃${RESET}"
     echo -e "${GREEN}┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┻━━━━━━━━━┛${RESET}"
     echo -e "  🛠️  ${GREEN}Developed by: ${YELLOW}@mithun_jana${RESET}"
     echo -e "  👤  ${GREEN}User: ${MAGENTA}$USER${RESET}"
@@ -252,7 +252,7 @@ fi
         log "install sublime Text 4 via direct download..."
         
         # Download the latest .deb package
-        local download_url="https://download.sublimetext.com/sublime-text_build-4169_amd64.deb"
+        local download_url="https://www.sublimetext.com/download_thanks?target=x64-deb"
         local download_path="/tmp/sublime-text.deb"
         
         log_download "download sublime Text..."
@@ -1383,9 +1383,9 @@ fish_conf() {
     cat > ~/.config/fish/config.fish <<'EOF'
 set -g fish_greeting
 abbr -e gau
-
-if command -q vivid
-    set -Ux LS_COLORS (vivid generate catppuccin-mocha)
+if command -q eza
+    alias ls='eza --color=always --icons'
+    alias tree='eza --tree --icons -a'
 end
 EOF
     # Run fish configuration using a heredoc
@@ -1529,7 +1529,7 @@ install_fish() {
         fi  
         if [ "$choice" = "1" ]; then
             log_install "install fish & kitty in $OS_TYPE...."   
-            sudo pacman -S --needed fish grc iproute2 vivid net-tools bat
+            sudo pacman -S --needed fish grc iproute2 eza net-tools bat
             fish_conf
             echo 'set -gx BAT_THEME "Catppuccin Mocha"' >> ~/.config/fish/config.fish
             echo "alias cat='bat --paging=never'" >> ~/.config/fish/config.fish
@@ -1538,11 +1538,10 @@ install_fish() {
             log "add fish shell in kitty ...."
             # Replace /bin/zsh with fish in kitty.conf
             sed -i 's|/bin/zsh|/bin/fish|g' ~/.config/kitty/kitty.conf 2>/dev/null
-            log_info "running kitty terminal"   
-            exec kitty        
+            log_info "restart system for applying changes.."    
         else
             log_install "install fish in $OS_TYPE...."
-            sudo pacman -S --needed fish grc iproute2 vivid net-tools bat
+            sudo pacman -S --needed fish grc iproute2 eza net-tools bat
             fish_conf
             echo 'set -gx BAT_THEME "Catppuccin Mocha"' >> ~/.config/fish/config.fish
             echo "alias cat='bat --paging=never'" >> ~/.config/fish/config.fish
@@ -1561,7 +1560,7 @@ install_fish() {
         fi
         if [ "$choice" = "1" ]; then
             log_install "install fish & kitty in $OS_TYPE...."
-            sudo apt install fish grc iproute2 vivid bat -y
+            sudo apt install fish grc iproute2 eza bat -y
             fish_conf
             echo 'set -gx BAT_THEME "Catppuccin Mocha"' >> ~/.config/fish/config.fish
             echo "alias cat='batcat --paging=never'" >> ~/.config/fish/config.fish
@@ -1570,12 +1569,11 @@ install_fish() {
             log "add fish shell in kitty ...."
             # Replace /bin/zsh with fish in kitty.conf
             sed -i 's|/bin/zsh|/bin/fish|g' ~/.config/kitty/kitty.conf 2>/dev/null
-            log_info "running kitty terminal"
-            exec kitty
+            log_info "reboot system for applying changes..
             
         else
             log_install "install fish in $OS_TYPE...."
-            sudo apt install fish grc iproute2 vivid bat
+            sudo apt install fish grc iproute2 eza bat
             fish_conf
             echo 'set -gx BAT_THEME "Catppuccin Mocha"' >> ~/.config/fish/config.fish
             echo "alias cat='batcat --paging=never'" >> ~/.config/fish/config.fish
@@ -2293,7 +2291,7 @@ install_ghauri() {
         
         if [ "$OS_TYPE" = "arch" ]; then
             python3 -m pip install --upgrade -r requirements.txt --break-system-packages
-            sudo python3 setup.py install
+            python3 -m pip install -e . --break-system-packages
             sudo rm -rf /tmp/ghauri
         else
             pip3 install --upgrade -r requirements.txt --break-system-packages
