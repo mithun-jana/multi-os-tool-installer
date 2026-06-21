@@ -1251,7 +1251,7 @@ layout splits
 shell /bin/fish
 
 # THEME
-include /home/nulluser/.config/kitty/themes/catppuccin/themes/mocha.conf
+include /home/$USER/.config/kitty/themes/catppuccin/themes/mocha.conf
 allow_remote_control yes
 listen_on unix:/tmp/kitty-$PID
 font_size 17
