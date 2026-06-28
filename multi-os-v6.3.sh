@@ -1569,7 +1569,7 @@ install_fish() {
             log "add fish shell in kitty ...."
             # Replace /bin/zsh with fish in kitty.conf
             sed -i 's|/bin/zsh|/bin/fish|g' ~/.config/kitty/kitty.conf 2>/dev/null
-            log_info "reboot system for applying changes..
+            log_info "reboot system for applying changes.."
             
         else
             log_install "install fish in $OS_TYPE...."
