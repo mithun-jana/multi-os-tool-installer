@@ -15,7 +15,7 @@ LOG_FILE="/tmp/tool_installer.log"
 DEBUG=false
 show_banner() {
     echo -e "${GREEN}┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━┓${RESET}"
-    echo -e "${GREEN}┃   ${AQUA}Multi-OS Tool Installer${GREEN}           ┃ ${YELLOW} v6.2   ${GREEN}┃${RESET}"
+    echo -e "${GREEN}┃   ${AQUA}Multi-OS Tool Installer${GREEN}           ┃ ${YELLOW} v6.4   ${GREEN}┃${RESET}"
     echo -e "${GREEN}┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┻━━━━━━━━━┛${RESET}"
     echo -e "  🛠️  ${GREEN}Developed by: ${YELLOW}@mithun_jana${RESET}"
     echo -e "  👤  ${GREEN}User: ${MAGENTA}$USER${RESET}"
@@ -201,8 +201,6 @@ install_manual_debian() {
             install_feroxbuster_manual ;;
         "stacer-git")
             install_stacer_manual ;;
-        "burpsuitepro")
-            install_burpsuitepro ;;
         "gau")
             install_gau_manual ;;
         "rustscan")
@@ -390,57 +388,227 @@ fi
         log_success "rustscan already installed - version: $version"
     fi
 }
-#=====gau_install======
+#=====go_installation======
+install_go() {
+    if command -v go >/dev/null 2>&1; then
+        log_success "Go already installed: $(go version)"
+        return 0
+    fi
+    
+    log_install "install Go programming language..."
+    
+    # Try package manager first
+    if [ "$OS_TYPE" = "arch" ]; then
+        install_pkg go || {
+            log_error "failed to install Go via pacman"
+            return 1
+        }
+    else
+        install_pkg golang-go || install_pkg golang || {
+            log_error "failed to install Go via package manager"
+            return 1
+        }
+    fi
+    
+    # Verify installation
+    if command -v go >/dev/null 2>&1; then
+        log_success "Go installed successfully: $(go version)"
+        return 0
+    else
+        log_error "Go installation failed"
+        return 1
+    fi
+}
+#=====setup_go_environment======
+setup_go_env() {
+    # Set GOPATH if not set
+    if [ -z "$GOPATH" ]; then
+        export GOPATH="$HOME/go"
+        export PATH="$PATH:$GOPATH/bin"
+    fi
+    
+    # Create GOPATH directories
+    mkdir -p "$GOPATH/bin"
+    mkdir -p "$GOPATH/src"
+    mkdir -p "$GOPATH/pkg"
+    
+    # Add to shell config if not present
+    if ! grep -q "GOPATH" "$HOME/.bashrc" 2>/dev/null; then
+        {
+            echo ""
+            echo "# Go environment setup"
+            echo "export GOPATH=\"\$HOME/go\""
+            echo "export PATH=\"\$PATH:\$GOPATH/bin\""
+        } >> "$HOME/.bashrc"
+        log_info "Added Go environment to ~/.bashrc"
+    fi
+    
+    if ! grep -q "GOPATH" "$HOME/.zshrc" 2>/dev/null; then
+        {
+            echo ""
+            echo "# Go environment setup"
+            echo "export GOPATH=\"\$HOME/go\""
+            echo "export PATH=\"\$PATH:\$GOPATH/bin\""
+        } >> "$HOME/.zshrc"
+        log_info "Added Go environment to ~/.zshrc"
+    fi
+    
+    return 0
+}
+
+#=====gau_installation======
 install_gau_manual() {
-    export PATH="/usr/local/bin:$PATH"
     pkg="gau"
+    export PATH="/usr/local/bin:$PATH"
+    
     if ! command -v gau >/dev/null 2>&1; then
         log_install "install $pkg manually using Go..."
         
-        # Install Go if not present
+        # Ensure Go is installed
         if ! command -v go >/dev/null 2>&1; then
-            log "install Go..."
-            install_pkg golang-go || {
+            log "Go not found, installing..."
+            install_go || {
                 log_error "failed to install Go"
                 return 1
             }
         fi
         
-        # Set GOPATH if not set
-        if [ -z "$GOPATH" ]; then
-            export GOPATH="$HOME/go"
-            export PATH="$PATH:$GOPATH/bin"
-        fi
+        # Setup Go environment
+        setup_go_env || {
+            log_error "failed to setup Go environment"
+            return 1
+        }
         
-        # Create GOPATH directories if they don't exist
-        mkdir -p "$GOPATH/bin"
+        # Create temp directory for build
+        local BUILD_DIR
+        BUILD_DIR=$(mktemp -d)
+        cd "$BUILD_DIR" || return 1
         
-        log_install "install gau v2..."
-        log_download "download gau package..."
-        git clone https://github.com/lc/gau.git; \
-        cd gau/cmd/gau; \
-        go build; \
-        sudo mv gau /usr/local/bin/; \
-        gau --version;
+        log_download "clone gau repository..."
+        git clone https://github.com/lc/gau.git || {
+            log_error "failed to clone gau repository"
+            cd - >/dev/null || return 1
+            rm -rf "$BUILD_DIR"
+            return 1
+        }
         
-        # Add GOPATH to shell rc if not already there
-        if ! grep -q "GOPATH" "$HOME/.zshrc" 2>/dev/null; then
-            echo "export GOPATH=\"\$HOME/go\"" >> "$HOME/.bashrc"
-            log_info "Added GOPATH to ~/.bashrc"
-        fi
+        cd gau/cmd/gau || {
+            log_error "failed to enter gau directory"
+            cd - >/dev/null || return 1
+            rm -rf "$BUILD_DIR"
+            return 1
+        }
+        
+        log_install "build gau..."
+        go build || {
+            log_error "go build failed"
+            cd - >/dev/null || return 1
+            rm -rf "$BUILD_DIR"
+            return 1
+        }
+        
+        sudo mv gau /usr/local/bin/ || {
+            log_error "failed to move gau to /usr/local/bin"
+            cd - >/dev/null || return 1
+            rm -rf "$BUILD_DIR"
+            return 1
+        }
+        
+        cd - >/dev/null || return 1
+        rm -rf "$BUILD_DIR"
         
         # Verify installation
-        if  command -v gau >/dev/null 2>&1; then
+        if command -v gau >/dev/null 2>&1; then
+            local version
+            version=$(gau --version 2>/dev/null | head -1 || echo "unknown")
+            log_success "$pkg installed manually - version: $version"
+            return 0
+        else
+            log_error "$pkg installation verification failed"
+            return 1
+        fi
+    else
+        local version
+        version=$(gau --version 2>/dev/null | head -1 || echo "unknown")
+        log_success "$pkg already installed - version: $version"
+        return 0
+    fi
+}
+#=====waybackurls_installation======
+install_waybackurls() {
+    pkg="waybackurls"
+    export PATH="/usr/local/bin:$PATH"
+    
+    if ! command -v waybackurls >/dev/null 2>&1; then
+        log_install "install $pkg manually using Go..."
+        
+        # Ensure Go is installed
+        if ! command -v go >/dev/null 2>&1; then
+            log "Go not found, installing..."
+            install_go || {
+                log_error "failed to install Go"
+                return 1
+            }
+        fi
+        
+        # Setup Go environment
+        setup_go_env || {
+            log_error "failed to setup Go environment"
+            return 1
+        }
+        
+        # Create temp directory for build
+        local BUILD_DIR
+        BUILD_DIR=$(mktemp -d)
+        cd "$BUILD_DIR" || return 1
+        
+        log_download "clone waybackurls repository..."
+        git clone https://github.com/tomnomnom/waybackurls.git || {
+            log_error "failed to clone waybackurls repository"
+            cd - >/dev/null || return 1
+            rm -rf "$BUILD_DIR"
+            return 1
+        }
+        
+        cd waybackurls || {
+            log_error "failed to enter waybackurls directory"
+            cd - >/dev/null || return 1
+            rm -rf "$BUILD_DIR"
+            return 1
+        }
+        
+        log_install "build waybackurls..."
+        go build || {
+            log_error "go build failed"
+            cd - >/dev/null || return 1
+            rm -rf "$BUILD_DIR"
+            return 1
+        }
+        
+        # The binary is named "waybackurls" after go build
+        sudo cp waybackurls /usr/local/bin/ || {
+            log_error "failed to copy waybackurls to /usr/local/bin"
+            cd - >/dev/null || return 1
+            rm -rf "$BUILD_DIR"
+            return 1
+        }
+        
+        cd - >/dev/null || return 1
+        rm -rf "$BUILD_DIR"
+        
+        # Verify installation
+        if command -v waybackurls >/dev/null 2>&1; then
             log_success "$pkg installed manually"
+            return 0
         else
             log_error "$pkg installation verification failed"
             return 1
         fi
     else
         log_success "$pkg already installed"
+        return 0
     fi
 }
-
 install_amass_manual() {
     if ! command -v amass >/dev/null 2>&1; then
         log_install "install Amass manually..."
@@ -632,7 +800,7 @@ if [ "$OS_TYPE" = "arch" ]; then
     categories[vmware]="virtualbox-guest-utils open-vm-tools xf86-input-vmmouse"
     categories[reverse_engineering]="pyinstractor ghidra ILSpy" 
     categories[sound]="pipewire pipewire-pulse wireplumber"
-    categories[recon]="amass-bin subfinder httpx nikto nuclei wpscan gau"
+    categories[recon]="amass-bin subfinder httpx nikto nuclei wpscan gau hakrawler-git waybackurls"
     categories[network]="netdiscover arp-scan nmap rustscan aircrack-ng wifite wireless_tools wpa_supplicant wireshark-qt"
     categories[bruteforce]="dirsearch feroxbuster ffuf gobuster crunch hashcat hydra john wordlists"
     categories[exploitation]="metasploit exploitdb social-engineer-toolkit sqlmap ghauri"
@@ -643,7 +811,7 @@ else
     # Debian/Kali/Parrot packages with manual fallbacks
     categories[vmware]="open-vm-tools"
     categories[sound]="pipewire wireplumber alsa-utils pipewire-pulse pipewire-audio pipewire-alsa pipewire-jack"
-    categories[recon]="amass subfinder httpx-toolkit nikto nuclei wpscan gau"  
+    categories[recon]="amass subfinder httpx-toolkit nikto nuclei wpscan gau hakrawler waybackurls"  
     categories[network]="netdiscover arp-scan nmap rustscan aircrack-ng wifite wireless-tools wpasupplicant wireshark"
     categories[bruteforce]="dirb dirbuster dirsearch feroxbuster ffuf gobuster crunch hashcat hydra john wordlists seclists"
     categories[exploitation]="metasploit-framework exploitdb set sqlmap ghauri powershell-empire"
@@ -741,7 +909,7 @@ check_package_status() {
         
         # Check if we have manual installation method
         case "$pkg" in
-            "amass-bin"|"subfinder"|"nuclei"|"feroxbuster"|"stacer-git"|"burpsuitepro"|"gau"|"rustscan"|"sublime-text-4"|"pyinstractor"|"ILSpy")
+            "amass-bin"|"subfinder"|"nuclei"|"feroxbuster"|"stacer-git"|"burpsuitepro"|"gau"|"rustscan"|"sublime-text-4"|"pyinstractor"|"ILSpy"|"waybackurls")
                 set -e
                 return 1  
                 ;;
@@ -778,7 +946,7 @@ install_packages() {
         
         # Special handling for tools that need manual installation
         case "$pkg" in
-            "ghauri"|"git-dumper"|"netdiscover"|"burpsuitepro"|"feroxbuster")
+            "ghauri"|"git-dumper"|"netdiscover"|"burpsuitepro"|"feroxbuster"|"waybackurls")
                 if command -v "$pkg" &>/dev/null; then
                     log_success "$pkg is already installed."
                 else
@@ -872,7 +1040,7 @@ install_packages() {
     
     for pkg in "${to_install[@]}"; do
         case "$pkg" in
-            "ghauri"|"dirsearch"|"git-dumper"|"netdiscover"|"feroxbuster"|"burpsuitepro"|"gau"|"rustscan"|"sublime-text-4"|"pyinstractor"|"ILSpy")
+            "ghauri"|"dirsearch"|"git-dumper"|"netdiscover"|"feroxbuster"|"burpsuitepro"|"gau"|"rustscan"|"sublime-text-4"|"pyinstractor"|"ILSpy"|"waybackurls")
                 special_packages+=("$pkg")
                 ;;
             *)
@@ -901,12 +1069,12 @@ install_packages() {
             "git-dumper") install_gitdumper ;;
             "netdiscover") install_netdiscover ;;
             "feroxbuster") install_feroxbuster ;;
-            "burpsuitepro") install_burpsuitepro ;;
             "gau") install_gau_manual ;;
             "rustscan") install_rustscan_manual;;
             "sublime-text-4") install_sublime_text;;
             "pyinstractor") install_pyinstractor ;;
             "ILSpy") install_ILSpy ;;
+            "waybackurls") install_waybackurls ;;
         *)
         esac
     done
@@ -973,7 +1141,8 @@ show_menu() {
     echo -e "${YELLOW}[5] ${GREEN}Fish-shell & fisher${RESET}"
     echo -e "${YELLOW}[6] ${GREEN}Kitty-terminal & configuration${RESET}"
     echo -e "${YELLOW}[7] ${GREEN}Ulauncher & Catppuccin Theme${RESET}"
-    echo -e "${YELLOW}[8] ${RED}Exit${RESET}"
+    echo -e "${YELLOW}[8] ${GREEN}Firefox-Add-ons 🧩${RESET}"
+    echo -e "${YELLOW}[9] ${RED}Exit${RESET}"
 }
 
 # Install all categories
@@ -1887,179 +2056,6 @@ install_ohmyzsh() {
     log_success "Oh My Zsh installed with plugins."
     log_info " Run zsh to start using Oh-My-Zsh"
 }
-# Burpsuite_pro
-install_burpsuitepro() {
-    local INSTALL_DIR="$HOME/Burpsuite-Professional"
-    local BIN_PATH="/usr/local/bin/burpsuitepro"
-    local BASE_URL="https://portswigger-cdn.net/burp/releases/download?product=pro&type=Jar&version="
-    local TEMP_DIR="/tmp/burpsuite-$$"
-
-    # Create temporary directory
-    mkdir -p "$TEMP_DIR"
-    local CURRENT_DIR
-    CURRENT_DIR=$(pwd)
-    local installed_version=""
-    local downloaded_jar=""
-    local downloaded_version=""
-    
-    local INSTALLED_JAR
-    INSTALLED_JAR=$(find "$INSTALL_DIR" -maxdepth 1 -name "burpsuite_pro_v*.jar" 2>/dev/null | head -1)
-    INSTALLED_JAR=$(basename "$INSTALLED_JAR" 2>/dev/null || true)
-
-    if [ -n "$INSTALLED_JAR" ]; then
-        installed_version=$(echo "$INSTALLED_JAR" | grep -oP 'v\K[0-9.]+')
-        log_info "Installed Version: $installed_version"
-    else
-        log_info "BurpSuite not currently installed."
-    fi
-    # Dependencies
-    log_install "install dependencies..."
-
-    if [ "$OS_TYPE" = "arch" ]; then
-        ensure_pkg "axel"
-        ensure_pkg "jdk21-openjdk"
-        sudo archlinux-java set java-21-openjdk 2>/dev/null || true
-    else
-        ensure_pkg "axel"
-        ensure_pkg "openjdk-21-jdk" || \
-        ensure_pkg "openjdk-17-jdk" || \
-        ensure_pkg "default-jdk"
-    fi
-    # Download Latest Jar to TEMP directory
-    log_download "download latest BurpSuite Pro to temporary directory..."
-    
-    cd "$TEMP_DIR" || return 1
-
-    # Download with axel (saves with original filename)
-    axel -a "$BASE_URL"
-
-    downloaded_jar=$(find "$TEMP_DIR" -maxdepth 1 -name "burpsuite_pro_v*.jar" 2>/dev/null | head -1)
-    downloaded_jar=$(basename "$downloaded_jar" 2>/dev/null || true)
-
-    if [ -z "$downloaded_jar" ]; then
-        log_error "Download failed."
-        rm -rf "$TEMP_DIR"
-        cd "$CURRENT_DIR"
-        return 1
-    fi
-
-    downloaded_version=$(echo "$downloaded_jar" | grep -oP 'v\K[0-9.]+')
-    log_success "Downloaded Version: $downloaded_version"
-
-    #Versions compare
-    if [ -n "$installed_version" ]; then
-        if [ "$installed_version" = "$downloaded_version" ]; then
-            log_success "Downloaded version matches installed version ($installed_version)"
-            log_info "Removing downloaded file from temp directory..."
-            rm -f "$downloaded_jar"
-            rm -rf "$TEMP_DIR"
-            cd "$CURRENT_DIR"
-            return 0
-        else
-            log_info "New version available: $downloaded_version (current: $installed_version)"
-            echo -e "${YELLOW}Do you want to upgrade? (y/N): ${RESET}"
-            read -r choice
-            choice=${choice:-N}
-            
-            if [[ ! "$choice" =~ ^[Yy]$ ]]; then
-                log_info "Upgrade cancelled. Removing downloaded file..."
-                rm -f "$downloaded_jar"
-                rm -rf "$TEMP_DIR"
-                cd "$CURRENT_DIR"
-                return 0
-            fi
-            
-            # User confirmed - proceed with upgrade
-            log_install "Proceeding with upgrade to version $downloaded_version..."
-            
-            # Kill any running BurpSuite processes
-            pkill -f burpsuite 2>/dev/null || true
-            
-            # Remove old launcher and JAR
-            sudo rm -f "$BIN_PATH"
-            rm -f "$INSTALL_DIR/$INSTALLED_JAR"
-            log_success "Old version removed."
-        fi
-    else
-        # No installed version found
-        log_download "Install BurpSuite Pro v$downloaded_version? (y/N): "
-        read -r choice
-        choice=${choice:-N}
-        
-        if [[ ! "$choice" =~ ^[Yy]$ ]]; then
-            log_info "Installation cancelled. Removing downloaded file..."
-            rm -f "$downloaded_jar"
-            rm -rf "$TEMP_DIR"
-            cd "$CURRENT_DIR"
-            return 0
-        fi
-    fi
-
-    #Move downloaded JAR to installation directory
-    log_install "Moving BurpSuite Pro v$downloaded_version to installation directory..."
-    mkdir -p "$INSTALL_DIR"
-    mv "$TEMP_DIR/$downloaded_jar" "$INSTALL_DIR/"
-    log_success "JAR file moved to $INSTALL_DIR"
-    # Loader from GitHub
-    log_download "download loader of Burpsuite-Professional..."
-    
-    # Clone loader repo to a temporary directory (different from JAR temp)
-    local LOADER_TEMP_DIR="/tmp/burpsuite-loader-$$"
-    rm -rf "$LOADER_TEMP_DIR"
-    git clone https://github.com/xiv3r/Burpsuite-Professional.git "$LOADER_TEMP_DIR"
-    
-    if [ ! -f "$LOADER_TEMP_DIR/loader.jar" ]; then
-        log_error "loader.jar not found in repository"
-        rm -rf "$LOADER_TEMP_DIR"
-        rm -rf "$TEMP_DIR"
-        cd "$CURRENT_DIR"
-        return 1
-    fi
-    
-    # Copy loader to installation directory
-    cp "$LOADER_TEMP_DIR/loader.jar" "$INSTALL_DIR/"
-    # Clean up loader temp directory
-    rm -rf "$LOADER_TEMP_DIR"
-    # burp Setup
-    cd "$INSTALL_DIR" || return 1
-    
-    log_install "Creating launcher script..."
-
-    # Create launcher script
-    cat > burpsuitepro <<EOF
-#!/bin/bash
-java --add-opens=java.desktop/javax.swing=ALL-UNNAMED \
-     --add-opens=java.base/java.lang=ALL-UNNAMED \
-     --add-opens=java.base/jdk.internal.org.objectweb.asm=ALL-UNNAMED \
-     --add-opens=java.base/jdk.internal.org.objectweb.asm.tree=ALL-UNNAMED \
-     --add-opens=java.base/jdk.internal.org.objectweb.asm.Opcodes=ALL-UNNAMED \
-     -javaagent:$INSTALL_DIR/loader.jar \
-     -noverify \
-     -jar $INSTALL_DIR/$downloaded_jar "\$@" &
-EOF
-
-    chmod +x burpsuitepro
-    sudo cp burpsuitepro /usr/local/bin/
-
-    # Clean up main temp directory
-    rm -rf "$TEMP_DIR"
-
-    log_success "BurpSuite Professional v$downloaded_version installed successfully!"
-    log_info "Location: $INSTALL_DIR"
-    log_info "Command: burpsuitepro"
-    
-    # Ask if user wants to run loader
-    echo
-    echo -e "${YELLOW}Do you want to run the loader to generate a license? (y/N): ${RESET}"
-    read -r run_loader
-    if [[ "$run_loader" =~ ^[Yy]$ ]]; then
-        log "Running loader..."
-        cd "$INSTALL_DIR" && java -jar loader.jar
-    fi
-    
-    cd "$CURRENT_DIR"
-    return 0
-}
 # Burpsuite_pro_latest
 install_burpsuitepro_latest() {
     local INSTALL_DIR="$HOME/Burpsuitepro"
@@ -2363,6 +2359,40 @@ install_netdiscover() {
         log_success "netdiscover already installed."
     fi
 }
+
+# Load Firefox Add-ons Module
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+FIREFOX_MODULE="${SCRIPT_DIR}/module/firefox-addons.sh"
+
+load_firefox_module() {
+    if [ ! -f "$FIREFOX_MODULE" ]; then
+        return 1
+    fi
+    
+    if [ ! -r "$FIREFOX_MODULE" ]; then
+        chmod +r "$FIREFOX_MODULE" 2>/dev/null || return 1
+    fi
+    
+    if source "$FIREFOX_MODULE" 2>/dev/null; then
+        if declare -f firefox_addons_manager >/dev/null 2>&1; then
+            return 0
+        fi
+    fi
+    return 1
+}
+
+
+if load_firefox_module; then
+    HAS_FIREFOX_MODULE=true
+else
+    HAS_FIREFOX_MODULE=false
+    firefox_addons_manager() {
+        echo -e "❌ Firefox add-ons module not available"
+        echo -e "Please ensure firefox-addons.sh is in the same directory"
+        read -rp "Press Enter to continue..."
+        return 1
+    }
+fi
 # Core Dependencies Installation
 install_core_dependencies() {
 
@@ -2435,7 +2465,7 @@ install_core_dependencies() {
         return 1
     fi
 
-    # Ensure pip module works (extra safety)
+    # Ensure pip module works 
     if ! python3 -m pip --version >/dev/null 2>&1; then
         echo -e "${YELLOW}⚠️ Attempting ensurepip...${RESET}"
         python3 -m ensurepip --upgrade >/dev/null 2>&1
@@ -2481,7 +2511,7 @@ main() {
         }
     fi
 
-    # Interactive Menu Loop
+    
     while true; do
         clear
         show_banner
@@ -2493,12 +2523,12 @@ main() {
             1) install_all_categories ;;
             2) install_by_selection ;;
             3) install_burpsuitepro_latest ;;
-            #4) install_burpsuitepro ;;
             4) install_ohmyzsh ;;
             5) install_fish ;;
             6) install_kitty ;;
             7) install_ulauncher ;;
-            8)
+            8) firefox_addons_manager ;;
+            9)
                 echo -e "\n${GREEN}✅ All tasks finished. See you again ${MAGENTA}$USER${RESET}"
                 exit 0
                 ;;
@@ -2512,5 +2542,5 @@ main() {
         read -rp "Press Enter to continue..."
     done
 }
-# Run main function
+
 main "$@"
