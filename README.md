@@ -69,8 +69,8 @@
 
 ```bash
 # 1. Clone the repo
-git clone https://github.com/mithunjana0051/multi-os.git
-cd multi-os
+git clone https://github.com/mithun-jana/multi-os-tool-installer.git
+cd multi-os-tool-installer
 
 # 2. Make executable
 chmod +x multi-os-v6.4.sh
@@ -79,7 +79,7 @@ chmod +x multi-os-v6.4.sh
 ./multi-os-v6.4.sh
 ```
 
-> ⚠️ **Run as a regular user with sudo access** — do NOT run as root directly.
+> ⚠️ **Run as a regular user** — do NOT run as root directly.
 
 > 📁 For Firefox Add-ons, place `firefox-addons.sh` inside a `module/` folder next to the main script.
 
